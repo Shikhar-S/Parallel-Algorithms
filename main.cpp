@@ -1,80 +1,180 @@
-/** Preprocessors and Global Variables*/
 
-#include<unistd.h>
-#include<stdio.h>
-#include<stdlib.h>
+
 #include <iostream>
-#include "tidier.h"
-#include <cstddef>
-#include<time.h>
-#include<limits.h>
-int xmax=INT_MIN,ymax=INT_MIN,xmin=INT_MAX,ymin=INT_MAX; 
-#define nd struct node
+#include "bezier1.h"
+#include "primitive.h"
+#include <iostream>
+#include <algorithm>
+#include <OpenGL/gl.h>
+#include <OpenGL/glu.h>
+#ifdef __APPLE__
+#include <GLUT/glut.h>
+#else
+#include <GL/glut.h>
+#endif
+#include "graphics.h"
 using namespace std;
-FILE *fp = fopen("pixels.txt","w");
-#include "primitives.h"
-#include "trees.h"
-#include "input_tree.h"
-#include "plotter.h"
-#define new (nd*)malloc(sizeof(nd)
-
-
-
-
-/** Subroutine to traverse the resultant tree.
-Draws all the nodes and respective edges*/
-void draw(struct node *node){
- if(node!=NULL){
-   if(node->x > xmax) xmax = node->x;
-   if(node->x < xmin) xmin = node->x;
-   if(node->y > ymax) ymax = node->y;
-   if(node->y < ymin) ymin = node->y;
-   if(node->Llink!=NULL){
-     primitives::drawLine(point(node->x,node->y),point(node->Llink->x,node->Llink->y));
-   }
-   if(node->Rlink!=NULL){
-     primitives::drawLine(point(node->x,node->y),point(node->Rlink->x,node->Rlink->y));
-   }
-   draw(node->Llink);
-   draw(node->Rlink);
-   primitives::drawCircle(point(node->x,node->y),15);
- }
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+vector<point> curve;
+vector<point> control;
+int wind_w=1200,wind_h=780;
+bool flag_shift;
+int i;
+void key(unsigned char key,int x,int y){
+    if(key==32){
+        cout<<"Pressed"<<endl;
+        double a[(int)curve.size()+1];
+        double b[(int)curve.size()+1];
+        int count=0;
+        for(vector<point>::iterator it=curve.begin();it!=curve.end();it++)
+        {
+            
+            a[count] = it->x;
+            b[count] = it->y;
+            printf("%lf %lf\n",a[count],b[count]);
+            count+=1;
+        }
+        func(a,b,count);
+    }
+    
 }
+void init() {
+    
+    //intializing the display window
+    
+    glutInitWindowPosition(-1,-1);
+    glutInitWindowSize(wind_w ,wind_h);			//The resolution of the output Window
+    glutInitDisplayMode(GLUT_DOUBLE|GLUT_RGB|GLUT_DEPTH);
+    glutCreateWindow("Bezier Curve");
+    glClearColor(1.0,1.0,1.0,1.0f); 			//the screen is cleared and the screen is made opaque
+    glColor3f(1.0,1.0,1.0);
+    glViewport(0, 0, wind_w, wind_h);
+    glMatrixMode(GL_PROJECTION);
+    glLoadIdentity();
+    glOrtho(0, wind_w,wind_h,0, 0, 1);
+}
+void disp()
+{
+    glPointSize(4);
+    glClearColor(1.0f,1.0f, 1.0f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    glColor3f(1.0f, 0.0f, 0.0f);			//choose red color
+    //glFrontFace(GL_CW);
+    if(control.size()!=0)
+    {
+        curve.clear();
+        for(double t=0;t<=1;t+=0.1)
+        {
+            point ans=bezier(control, t);
+            curve.push_back((ans));
+        }
+    }
+    glBegin(GL_LINE_STRIP);
+    for(vector<point>::iterator it=curve.begin();it!=curve.end();it++)
+    {
+        
+        glVertex2f((GLfloat)it->x,(GLfloat) it->y);
+        
+        //cout<<it->x<<" "<<it->y<<endl;
+    }
+    glEnd();
+    glBegin(GL_POINTS);
+    for(vector<point>::iterator it=control.begin();it!=control.end();it++)
+    {
+        glVertex2f((GLfloat)it->x, (GLfloat)it->y);
+    }
+    glEnd();
 
-/** Main Function To Run The Code*/
-int main(int argc,char** argv){
-    time_t t;
-     	srand((unsigned) time(&t));
-
-    struct node *root = (struct node *)malloc(sizeof(struct node));
-    root =NULL;
-    printf("ENTER VALUES FOR N\n");
-    int n;
-    scanf("%d",&n);
-    for(int i=1;i<=n;i++){
-        root = RandomTree::insert(root,rand()%10000);
+    
+   // glVertex2f(0.2f, -0.5f);
+    
+    glutSwapBuffers();
+    //glFlush();
+}
+bool found(point x)
+{
+    for(vector<point>::iterator it=control.begin();it!=control.end();it++)
+        if(*it==x)
+            return true;
+    return false;
+}
+void mouse(int button,int state,int x,int y)
+{
+    int mod=glutGetModifiers();
+    //cout<<mod<<endl;
+    if(mod==GLUT_ACTIVE_SHIFT)
+    {
+        if(flag_shift)
+        {
+            i=-1;
+            flag_shift=false;
+        }
+        cout<<"Returning\n";
+        return;
     }
-    printf("Enter Your Choice\n1. Tidy\n2. Tidier\n");
-    int choice;
-    scanf("%d",&choice);
-    if(choice==1){
-	Tidy::SetHeight(root,0);
-	Tidy::SetParent(root);
-	Tidy::tidyTree(root);
-	Tidy::SetXY(root);
+    
+    if(button==GLUT_LEFT_BUTTON)
+    {
+        if(found(point((double)x, (double)y)))
+        {
+            return;
+        }
+        control.push_back(point((double)x, (double)y));
+        cout<<control.size()<<"<---Size after adding one pt\n";
     }
-    else if(choice==2){
-	struct extreme LEFTMOST,RIGHTMOST;
-	Tidier::setup(root,0,LEFTMOST,RIGHTMOST);
-	Tidier::petrify(root,0);
+    else if(button==GLUT_RIGHT_BUTTON)
+    {
+        cout<<"Deleted\n";
+        for(vector<point>::iterator it=control.begin();it!=control.end();it++)
+        {
+            if((*it)==point(double(x),double(y)))
+            {
+                control.erase(it);
+                break;
+            }
+        }
+        //cout<<control.size()<<"<---Size after deleting one pt\n";
     }
-    else printf("\nWrong Choice");
-    draw(root);
-    fclose(fp);
-    fp = fopen("pixels.txt","r");
+    glutPostRedisplay();
+}
+void drag(int x,int y)
+{
+    
+    int n=control.size();
+    if(!flag_shift)
+    {
+        flag_shift=true;
+        for(i=0;i<n;i++)
+        {
+            if((control[i])==point(double(x),double(y)))
+            {
+                break;
+            }
+        }
+    }
+    
+    if(i!=(n+1) && flag_shift)
+    {
+        //cout<<"Changing point\n";
+        control[i]=point(double(x),double(y));
+        cout<<control.size()<<"<---Size\n";
+        glutPostRedisplay();
+    }
+    else{
+        cout<<"No Point Selected\n";
+    }
+}
+int main(int argc,char **argv) {
+    flag_shift=false;
+    i=-1;
     glutInit(&argc, argv);
-    Plot::init();
-    glutDisplayFunc(Plot::plotpixel);
+    init();
+    glutDisplayFunc(disp);
+    glutMouseFunc(mouse);
+    glutMotionFunc(drag);
+    glutKeyboardFunc(key);
     glutMainLoop();
-    return 0;
+    //cout<<ans.x<<" "<<ans.y<<endl;
 }
+#pragma GCC diagnostic pop
