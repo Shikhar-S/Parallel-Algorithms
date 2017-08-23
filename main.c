@@ -8,6 +8,8 @@
 
 #include <stdio.h>
 #include <OpenCL/cl.h>
+#include <time.h>
+#include <unistd.h>
 #define PROGRAM_FILE "test.cl"
 #define KERNEL_NAME "test"
 int N;
@@ -83,6 +85,24 @@ cl_program create_program(cl_device_id device,cl_context context,const char* fil
 }
 int main()
 {
+    
+    FILE *inputfile=fopen("f.txt","r");
+    FILE *outputfile=fopen("graph.txt","a");
+    fscanf(inputfile,"%d",&N);
+    int data[N];
+    int out[N];
+    for(int i=0;i<N;i++)
+    fscanf(inputfile,"%d",&data[i]);
+    
+    fclose(inputfile);
+    
+    printf("----------------------------------------------------------------------------------\n\n\n\n\n\n");
+    
+    //////////////////////////////////////SET UP//////////////////////////////
+    
+    cl_event timing_event;
+    cl_ulong start_time,end_time,read_time;
+    
     cl_device_id device;
     cl_context context;
     cl_command_queue queue;
@@ -103,22 +123,14 @@ int main()
         perror("Kernel Creation error");
         exit(1);
     }
-    queue=clCreateCommandQueue(context, device, 0  , &err);
+    
+    queue=clCreateCommandQueue(context, device, CL_QUEUE_PROFILING_ENABLE , &err);
     if(err<0)
     {
         perror("Queue Error");
         exit(1);
     }
-    scanf("%d",&N);
-    int data[N];
-    int out[N];
-    for(int i=0;i<N;i++)
-    scanf("%d",&data[i]);
-    for(int i=0;i<N;i++)
-        printf("%d   ",data[i]);
-    
-    printf("----------------------------------------------------------------------------------\n\n\n\n\n\n");
-    
+    //////////////////////////////////PROGRAM/////////////////////////////////
     cl_mem A= clCreateBuffer(context, CL_MEM_READ_ONLY|CL_MEM_COPY_HOST_PTR, sizeof(data), (void*)data, &err);
     if(err<0)
     {
@@ -133,23 +145,41 @@ int main()
         exit(1);
     }
     
+    size_t dim=1;
+    size_t *global_offset=NULL;
+    size_t global_size[]={N};
     
-    clSetKernelArg(kernel, 0, sizeof(cl_mem), &A);
-    clSetKernelArg(kernel, 1, sizeof(cl_mem), &B);
+    size_t local_size[]={128};
     
-    
+    err=clSetKernelArg(kernel, 0, sizeof(cl_mem), &A);
+    if(err<0)
+    {
+        perror("Error setting arguments ");
+        exit(1);
+    }
+
+    err=clSetKernelArg(kernel, 1, sizeof(cl_mem), &B);
+    if(err<0)
+    {
+        perror("Error setting arguments ");
+        exit(1);
+    }
+
+    err=clSetKernelArg(kernel, 2, sizeof(int)*(10), NULL);
+    if(err<0)
+    {
+        perror("Error setting arguments ");
+        exit(1);
+    }
     
     /*size_t dim=2;
     size_t global_offset[]={3,5};
     size_t global_size[]={6,4};
     size_t local_size[]={3,2};*/
-    size_t dim=1;
-    size_t *global_offset=NULL;
-    size_t global_size[]={N};
-    size_t local_size[]={1};
+    
    
     
-    err=clEnqueueNDRangeKernel(queue, kernel, dim, global_offset, global_size, local_size, 0, NULL, NULL);
+    err=clEnqueueNDRangeKernel(queue, kernel, dim, global_offset, global_size, local_size, 0, NULL, &timing_event);
     
     if(err<0)
     {
@@ -157,15 +187,23 @@ int main()
         exit(1);
     }
     
-    
-    clEnqueueReadBuffer(queue, B, CL_TRUE, 0, sizeof out, out, 0, NULL, NULL);
-    
-    for(int i=0;i<N;i++)
-        printf("%d   ",out[i]);
-   // printf("DONE!!");
+    clEnqueueReadBuffer(queue, B, CL_TRUE, 0, sizeof out, (void*)out, 0, NULL, NULL);
+    clFinish(queue);
+    clWaitForEvents(1,&timing_event);
+    printf("DONE!!");
     clReleaseKernel(kernel);
-    //clReleaseCommandQueue(queue);
     clReleaseProgram(program);
     clReleaseContext(context);
+    size_t timeres;
+    clGetDeviceInfo(device,CL_DEVICE_PROFILING_TIMER_RESOLUTION,sizeof(timeres),&timeres,NULL);
+    
+     clGetEventProfilingInfo(timing_event,CL_PROFILING_COMMAND_START,sizeof(start_time),&start_time,NULL);
+     clGetEventProfilingInfo(timing_event,CL_PROFILING_COMMAND_END,sizeof(end_time),&end_time,NULL);
+     read_time=end_time-start_time;
+     fprintf(outputfile,"%d %lf\n",N,read_time/1000000000.0);
+    for(int i=0;i<N;i++)
+        printf("%d ",out[i]);
+     
+    fclose(outputfile);
     
 }
